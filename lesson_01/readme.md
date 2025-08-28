@@ -8,7 +8,6 @@ This example demonstrates a simple chatbot using LiteLLM to call various models,
 - Rename `.env.example` to `.env` and fill in your API keys and URLs
 - Note: LM Studio requires an API key (even a dummy one)
 
-
 ## Usage
 - Run the chatbot with `python main.py`
 - Experiment with different models; try asking questions that require external tools (e.g., Wolfram Alpha) if supported by your model
@@ -16,6 +15,7 @@ This example demonstrates a simple chatbot using LiteLLM to call various models,
 File structure:
 - `chatbot.py` – main class
 - `models.py` – enum of available models
+- `prompts.py` – system prompts and texts
 - `main.py` – CLI runner
 
 Switching model in code (example):
