@@ -9,22 +9,24 @@ This example demonstrates a simple chatbot using LiteLLM to call various models,
 - Note: LM Studio requires an API key (even a dummy one)
 
 ## Usage
-- Run the chatbot with `python main.py`
+- Run the chatbot with `python src/main.py`
 - Experiment with different models; try asking questions that require external tools (e.g., Wolfram Alpha) if supported by your model
 
 File structure:
-- `chatbot.py` – main class
+- `src/main.py` – main script with functions for initialization and question processing
 - `models.py` – enum of available models
 - `prompts.py` – system prompts and texts
-- `main.py` – CLI runner
+- `.env.example` – example environment file
 
 Switching model in code (example):
 ```python
-from chatbot import Chatbot
 from models import GptModels
-bot = Chatbot(system_prompt="Hi", model=GptModels.gpt_4o_mini)
-print(bot.ask("Hello!"))
-print(bot.ask("Now use local model", model=GptModels.gemma_3_4b_instruct))
+import prompts as Prompts
+from main import init, run_question
+
+init(model=GptModels.gpt_4o_mini, system_prompt=Prompts.LESSON_01_CHATBOT)
+print(run_question("Hello!"))
+print(run_question("Now use local model", model=GptModels.gemma_3_4b_instruct))
 ```
 
 ---
