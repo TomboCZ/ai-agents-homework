@@ -18,15 +18,10 @@ File structure:
 - `prompts.py` – system prompts and texts
 - `.env.example` – example environment file
 
-Switching model in code (example):
+Example of switching models in code 
+(when using local inference, make sure to declare it correctly in `models.py` and set the corresponding `API_BASE` and `API_KEY` in your `.env` file)
 ```python
-from models import GptModels
-import prompts as Prompts
-from main import init, run_question
-
 init(model=GptModels.gpt_4o_mini, system_prompt=Prompts.LESSON_01_CHATBOT)
-print(run_question("Hello!"))
-print(run_question("Now use local model", model=GptModels.gemma_3_4b_instruct))
 ```
 
 ---
