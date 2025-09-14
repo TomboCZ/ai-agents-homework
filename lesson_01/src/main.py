@@ -1,109 +1,123 @@
 import json
 import random
-from typing import Dict, List, Optional, Any
+from typing import Any, Callable, Dict, List, Optional
+
 from dotenv import load_dotenv
 from litellm import completion
+
 import prompts as Prompts
 from models import GptModels
 
-# Global variables
-history: List[Dict[str, Any]] = []
 
-TOOLS = [
+# Tool schema advertised to the model (OpenAI-compatible)
+TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
             "name": "random_number",
             "description": "Generate a random integer in the interval 1..n (inclusive).",
-            "parameters": {"type": "object", "properties": {"n": {"type": "integer"}}},
-            "required": ["n"]
-        }
+            "parameters": {
+                "type": "object",
+                "properties": {"n": {"type": "integer", "minimum": 1}},
+                "required": ["n"],
+            },
+        },
     }
 ]
 
+
 def random_number(n: int) -> int:
-    """Returns a random integer between 1 and n (inclusive)."""
+    """Return a random integer between 1 and n (inclusive)."""
     return random.randint(1, int(n))
 
-def init(model: GptModels, system_prompt: str) -> None:
-    """Initializes the chatbot with a model and a system prompt."""
-    global history
-    history = [{"role": "system", "content": system_prompt}]
 
-def run_question(question: str, model: Optional[GptModels] = None) -> str:
-    """Processes a user question, handles tool calls, and returns the assistant's answer."""
-    model_to_use = model or GptModels.gpt_4o_mini
-    if question:
-        history.append({"role": "user", "content": question})
-    
-    resp = completion(model=model_to_use.value, messages=history, tools=TOOLS)
-    msg = resp["choices"][0]["message"]
-    
-    # Treat message and tool call entries as objects (getattr); accept only tools variant
-    tool_calls = getattr(msg, "tool_calls", []) or []
-    if not tool_calls:
-        answer = getattr(msg, "content", "") or ""
-        history.append({"role": "assistant", "content": answer})
-        return answer
-    
-    # Normalize calls (expect objects with .function)
-    tool_calls_list = []
-    for tc in tool_calls:
-        func = getattr(tc, "function", None)
-        if not func or not getattr(func, "name", None):
-            raise RuntimeError("invalid tool call")
-        tool_calls_list.append({
-            "id": getattr(tc, "id", "") or "",
-            "name": getattr(func, "name"),
-            "arguments": getattr(func, "arguments", "{}")
-        })
-    
-    # Extract arguments for assistant message
-    assistant_role = getattr(msg, "role", "assistant")
-    assistant_content = getattr(msg, "content", "")
-    assistant_tool_calls = tool_calls
-    history.append({
-        "role": assistant_role,
-        "content": assistant_content,
-        "tool_calls": assistant_tool_calls
-    })
-    
-    # Execute each call and append outputs
-    for call in tool_calls_list:
-        name = call["name"]
-        raw_args = call["arguments"] or "{}"
-        try:
-            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-        except Exception:
-            args = {}
-        if name == "random_number":
+class ChatBot:
+    """Minimal chat agent with optional tool-calling support."""
+
+    def __init__(self, model: GptModels, system_prompt: str):
+        self.model = model
+        self.history: List[Dict[str, Any]] = [
+            {"role": "system", "content": system_prompt}
+        ]
+        # Map tool name -> callable
+        self.tools: Dict[str, Callable[..., Any]] = {
+            "random_number": random_number,
+        }
+
+    def ask(self, question: str) -> str:
+        """Send a user question, handle tool calls, and return assistant text."""
+        if question:
+            self.history.append({"role": "user", "content": question})
+
+        first = completion(
+            model=self.model.value,
+            messages=self.history,
+            tools=TOOLS_SCHEMA,
+        )
+        msg = first["choices"][0]["message"]
+        tool_calls = msg.get("tool_calls") or []
+
+        # If no tool calls, return the content directly
+        if not tool_calls:
+            answer = msg.get("content", "") or ""
+            self.history.append({"role": "assistant", "content": answer})
+            return answer
+
+        # Append assistant tool_calls turn
+        self.history.append(
+            {
+                "role": msg.get("role", "assistant"),
+                "content": msg.get("content", ""),
+                "tool_calls": tool_calls,
+            }
+        )
+
+        # Execute tools and append tool results
+        for call in tool_calls:
+            fn = (call.get("function") or {})
+            name = fn.get("name")
+            args_raw = fn.get("arguments") or "{}"
             try:
-                result = random_number(int(args.get("n", 1)))
+                args = json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
             except Exception:
-                result = "Error: invalid n"
-        else:
-            result = f"Unknown tool: {name}"
-        history.append({
-            "role": "tool",
-            "name": name,
-            "tool_call_id": call["id"] or None,
-            "content": str(result)
-        })
-    
-    # Single follow-up completion
-    resp2 = completion(model=model_to_use.value, messages=history, tools=TOOLS)
-    msg2 = resp2["choices"][0]["message"]
-    answer = getattr(msg2, "content", "") or ""
-    history.append({"role": "assistant", "content": answer})
-    return answer
+                args = {}
+
+            result: Any
+            if name in self.tools:
+                try:
+                    result = self.tools[name](**args)
+                except TypeError:
+                    # Fallback for tools defined with positional args
+                    result = self.tools[name](*args.values())
+                except Exception as e:
+                    result = f"Error: {e}"
+            else:
+                result = f"Unknown tool: {name}"
+
+            self.history.append(
+                {
+                    "role": "tool",
+                    "name": name,
+                    "tool_call_id": call.get("id"),
+                    "content": str(result),
+                }
+            )
+
+        # Follow-up completion to incorporate tool results
+        follow = completion(
+            model=self.model.value,
+            messages=self.history,
+            tools=TOOLS_SCHEMA,
+        )
+        final_msg = follow["choices"][0]["message"]
+        answer = final_msg.get("content", "") or ""
+        self.history.append({"role": "assistant", "content": answer})
+        return answer
+
 
 if __name__ == "__main__":
     load_dotenv()
-    init(model=GptModels.gemma_3_4b_instruct, system_prompt=Prompts.LESSON_01_CHATBOT)
-    
-    question = "Roll a dice three times, tell me the numbers and their sum."
-    print(question)
-    
-    answer = run_question(question)
-    print(answer)
-    
+    bot = ChatBot(model=GptModels.gemma_3_4b_instruct, system_prompt=Prompts.LESSON_01_CHATBOT)
+    prompt = "Roll a dice three times, tell me the numbers and their sum."
+    print(prompt)
+    print(bot.ask(prompt))
