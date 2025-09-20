@@ -3,8 +3,9 @@
 Solutions and experiments from the AI Agents course.
 
 ## Lessons
-- [Lesson 1](lesson_01/) – "A simple chatbot with tool calling"
-- *(more lessons coming soon)*
+- [Lesson 1](lesson_01/) – Simple chatbot with tool calling
+- [Lesson 2](lesson_02/) – Example of using n8n automation
+- *(More lessons coming soon)*
 
 ---
 
